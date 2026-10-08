@@ -1,13 +1,23 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+// src/context/AppContext.jsx
+// Centralized App State connected to Firebase Cloud Firestore
+// Collections: 'menu' | 'pelanggan' | 'pesanan'
+
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
-  dummyMenus,
-  dummyCustomers,
-  dummyOrders,
   ORDER_STATUS,
   generateId,
   generateOrderNumber,
   isDrinkMenu,
+  dummyMenus,
+  dummyCustomers,
+  dummyOrders,
 } from '../data/dummyData';
+import {
+  menuService,
+  customerService,
+  orderService,
+  seedInitialDataToFirestore,
+} from '../services/firestoreService';
 
 const AppContext = createContext();
 
@@ -61,51 +71,24 @@ export const AppProvider = ({ children }) => {
   // Active Navigation Tab: 'home' | 'menu' | 'orders' | 'customers' | 'reports' | 'profile'
   const [activeTab, setActiveTab] = useState('home');
 
-  // Simulation mode for testing UI states required by PRD (normal, loading, empty, error)
-  const [simulationState, setSimulationState] = useState('normal');
+  // Simulation / Data State ('normal' | 'loading' | 'empty' | 'error')
+  // Starts with 'loading' while Firestore is initially fetching
+  const [simulationState, setSimulationState] = useState('loading');
+
+  // Firestore status flags
+  const [isFirestoreLoading, setIsFirestoreLoading] = useState(true);
+  const [firestoreError, setFirestoreError] = useState(null);
 
   // Notification Modal State
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [targetOrderId, setTargetOrderId] = useState(null);
 
-  // State with LocalStorage fallback
-  const [menus, setMenus] = useState(() => {
-    const saved = localStorage.getItem('dn_menus');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return dummyMenus;
-      }
-    }
-    return dummyMenus;
-  });
+  // Main Entities State (Connected to Firestore)
+  const [menus, setMenus] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [orders, setOrders] = useState([]);
 
-  const [customers, setCustomers] = useState(() => {
-    const saved = localStorage.getItem('dn_customers');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return dummyCustomers;
-      }
-    }
-    return dummyCustomers;
-  });
-
-  const [orders, setOrders] = useState(() => {
-    const saved = localStorage.getItem('dn_orders');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return dummyOrders;
-      }
-    }
-    return dummyOrders;
-  });
-
-  // Notifications state
+  // Notifications state (saved locally)
   const [notifications, setNotifications] = useState(() => {
     const saved = localStorage.getItem('dn_notifications');
     if (saved) {
@@ -158,19 +141,7 @@ export const AppProvider = ({ children }) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Sync to localStorage
-  useEffect(() => {
-    localStorage.setItem('dn_menus', JSON.stringify(menus));
-  }, [menus]);
-
-  useEffect(() => {
-    localStorage.setItem('dn_customers', JSON.stringify(customers));
-  }, [customers]);
-
-  useEffect(() => {
-    localStorage.setItem('dn_orders', JSON.stringify(orders));
-  }, [orders]);
-
+  // Sync auxiliary states to localStorage
   useEffect(() => {
     localStorage.setItem('dn_notifications', JSON.stringify(notifications));
   }, [notifications]);
@@ -182,6 +153,85 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     localStorage.setItem('dn_business_prefs', JSON.stringify(businessPreferences));
   }, [businessPreferences]);
+
+  // ─── FIRESTORE REAL-TIME SUBSCRIPTIONS ───
+  // Track readiness of 3 collections
+  const readyMapRef = useRef({ menu: false, pelanggan: false, pesanan: false });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkReady = () => {
+      if (
+        readyMapRef.current.menu &&
+        readyMapRef.current.pelanggan &&
+        readyMapRef.current.pesanan
+      ) {
+        if (isMounted) {
+          setIsFirestoreLoading(false);
+          setSimulationState((prev) => (prev === 'loading' ? 'normal' : prev));
+        }
+      }
+    };
+
+    const handleFirestoreError = (colName, err) => {
+      console.warn(`Firestore subscription notice [${colName}]:`, err);
+      if (isMounted) {
+        setFirestoreError(err);
+        readyMapRef.current[colName] = true;
+        // If all errored or done, finish loading
+        if (
+          readyMapRef.current.menu &&
+          readyMapRef.current.pelanggan &&
+          readyMapRef.current.pesanan
+        ) {
+          setIsFirestoreLoading(false);
+          // If we had no data at all and error occurred, switch to error state
+          setSimulationState((prev) => (prev === 'loading' ? 'error' : prev));
+        }
+      }
+    };
+
+    // 1. Subscribe Menu
+    const unsubMenu = menuService.subscribe(
+      (items) => {
+        if (!isMounted) return;
+        setMenus(items);
+        readyMapRef.current.menu = true;
+        checkReady();
+      },
+      (err) => handleFirestoreError('menu', err)
+    );
+
+    // 2. Subscribe Pelanggan
+    const unsubCustomer = customerService.subscribe(
+      (items) => {
+        if (!isMounted) return;
+        setCustomers(items);
+        readyMapRef.current.pelanggan = true;
+        checkReady();
+      },
+      (err) => handleFirestoreError('pelanggan', err)
+    );
+
+    // 3. Subscribe Pesanan
+    const unsubOrders = orderService.subscribe(
+      (items) => {
+        if (!isMounted) return;
+        setOrders(items);
+        readyMapRef.current.pesanan = true;
+        checkReady();
+      },
+      (err) => handleFirestoreError('pesanan', err)
+    );
+
+    return () => {
+      isMounted = false;
+      if (typeof unsubMenu === 'function') unsubMenu();
+      if (typeof unsubCustomer === 'function') unsubCustomer();
+      if (typeof unsubOrders === 'function') unsubOrders();
+    };
+  }, []);
 
   // ─── NOTIFICATION ACTIONS ───
   const addNotification = ({ type, title, message, orderId, orderNumber }) => {
@@ -217,25 +267,42 @@ export const AppProvider = ({ children }) => {
     setTargetOrderId(orderId);
   };
 
-  // ─── CRUD MENU ───
-  const addMenu = (menuData) => {
+  // ─── 5. CRUD MENU (Firestore: collection "menu") ───
+  // Field: nama, harga, sisa_porsi, tersedia, dibuat_pada
+  const addMenu = async (menuData) => {
+    const porsi = Number(menuData.sisaPorsi ?? menuData.sisa_porsi ?? 0);
     const isDrink = menuData.kategori === 'minuman' || isDrinkMenu(menuData);
+    const tempId = generateId('menu');
     const newMenu = {
-      id: generateId('menu'),
+      id: tempId,
       nama: menuData.nama.trim(),
       harga: Number(menuData.harga),
-      sisaPorsi: Number(menuData.sisaPorsi),
+      sisa_porsi: porsi,
+      sisaPorsi: porsi,
       kategori: menuData.kategori || (isDrink ? 'minuman' : 'makanan'),
-      tersedia: Number(menuData.sisaPorsi) > 0 ? (menuData.tersedia ?? true) : false,
+      tersedia: porsi > 0 ? (menuData.tersedia ?? true) : false,
+      dibuat_pada: new Date().toISOString(),
       createdAt: new Date().toISOString(),
     };
+
+    // Optimistic UI update
     setMenus((prev) => [newMenu, ...prev]);
     showToast('Menu berhasil ditambahkan', 'success');
+
+    try {
+      await menuService.create(newMenu);
+    } catch (err) {
+      console.error('Error saving menu to Firestore:', err);
+      showToast('Perhatian: Data tersimpan lokal, gagal sinkron Firestore', 'warning');
+    }
     return newMenu;
   };
 
-  const updateMenu = (id, menuData) => {
+  const updateMenu = async (id, menuData) => {
+    const porsi = Number(menuData.sisaPorsi ?? menuData.sisa_porsi ?? 0);
     const isDrink = menuData.kategori === 'minuman' || isDrinkMenu(menuData);
+
+    // Optimistic UI update
     setMenus((prev) =>
       prev.map((item) =>
         item.id === id
@@ -243,27 +310,44 @@ export const AppProvider = ({ children }) => {
               ...item,
               nama: menuData.nama.trim(),
               harga: Number(menuData.harga),
-              sisaPorsi: Number(menuData.sisaPorsi),
+              sisa_porsi: porsi,
+              sisaPorsi: porsi,
               kategori: menuData.kategori || (isDrink ? 'minuman' : 'makanan'),
-              tersedia:
-                Number(menuData.sisaPorsi) > 0 ? (menuData.tersedia ?? true) : false,
+              tersedia: porsi > 0 ? (menuData.tersedia ?? true) : false,
             }
           : item
       )
     );
     showToast('Menu berhasil diperbarui', 'success');
+
+    try {
+      await menuService.update(id, menuData);
+    } catch (err) {
+      console.error('Error updating menu in Firestore:', err);
+      showToast('Perhatian: Perubahan tersimpan lokal, gagal sinkron Firestore', 'warning');
+    }
     return true;
   };
 
-  const deleteMenu = (id) => {
+  const deleteMenu = async (id) => {
+    // Optimistic UI update
     setMenus((prev) => prev.filter((item) => item.id !== id));
     showToast('Menu berhasil dihapus', 'success');
+
+    try {
+      await menuService.delete(id);
+    } catch (err) {
+      console.error('Error deleting menu in Firestore:', err);
+      showToast('Perhatian: Dihapus lokal, gagal sinkron Firestore', 'warning');
+    }
   };
 
-  // ─── CRUD CUSTOMER ───
-  const addCustomer = (customerData) => {
+  // ─── 6. CRUD CUSTOMER (Firestore: collection "pelanggan") ───
+  // Field: nama, no_whatsapp, alamat, dibuat_pada (Doc ID = no_whatsapp)
+  const addCustomer = async (customerData) => {
+    const cleanWa = (customerData.no_whatsapp || customerData.whatsapp || '').trim();
     const exists = customers.some(
-      (c) => c.whatsapp.trim() === customerData.whatsapp.trim()
+      (c) => (c.no_whatsapp || c.whatsapp || '').trim() === cleanWa
     );
     if (exists) {
       showToast('Nomor WhatsApp sudah digunakan oleh pelanggan lain', 'warning');
@@ -271,49 +355,81 @@ export const AppProvider = ({ children }) => {
     }
 
     const newCustomer = {
-      id: generateId('cust'),
+      id: cleanWa,
       nama: customerData.nama.trim(),
-      whatsapp: customerData.whatsapp.trim(),
+      no_whatsapp: cleanWa,
+      whatsapp: cleanWa,
       alamat: customerData.alamat.trim(),
+      dibuat_pada: new Date().toISOString(),
       createdAt: new Date().toISOString(),
     };
+
+    // Optimistic UI update
     setCustomers((prev) => [newCustomer, ...prev]);
     showToast('Pelanggan berhasil ditambahkan', 'success');
+
+    try {
+      await customerService.create(newCustomer);
+    } catch (err) {
+      console.error('Error creating customer in Firestore:', err);
+      showToast('Perhatian: Tersimpan lokal, gagal sinkron Firestore', 'warning');
+    }
     return newCustomer;
   };
 
-  const updateCustomer = (id, customerData) => {
+  const updateCustomer = async (id, customerData) => {
+    const cleanWa = (customerData.no_whatsapp || customerData.whatsapp || id).trim();
     const exists = customers.some(
-      (c) => c.id !== id && c.whatsapp.trim() === customerData.whatsapp.trim()
+      (c) => c.id !== id && (c.no_whatsapp || c.whatsapp || '').trim() === cleanWa
     );
     if (exists) {
       showToast('Nomor WhatsApp sudah digunakan oleh pelanggan lain', 'warning');
       return false;
     }
 
+    // Optimistic UI update
     setCustomers((prev) =>
       prev.map((item) =>
         item.id === id
           ? {
               ...item,
+              id: cleanWa,
               nama: customerData.nama.trim(),
-              whatsapp: customerData.whatsapp.trim(),
+              no_whatsapp: cleanWa,
+              whatsapp: cleanWa,
               alamat: customerData.alamat.trim(),
             }
           : item
       )
     );
     showToast('Pelanggan berhasil diperbarui', 'success');
+
+    try {
+      await customerService.update(id, customerData);
+    } catch (err) {
+      console.error('Error updating customer in Firestore:', err);
+      showToast('Perhatian: Diperbarui lokal, gagal sinkron Firestore', 'warning');
+    }
     return true;
   };
 
-  const deleteCustomer = (id) => {
+  const deleteCustomer = async (id) => {
+    // Optimistic UI update
     setCustomers((prev) => prev.filter((item) => item.id !== id));
     showToast('Pelanggan berhasil dihapus', 'success');
+
+    try {
+      await customerService.delete(id);
+    } catch (err) {
+      console.error('Error deleting customer in Firestore:', err);
+      showToast('Perhatian: Dihapus lokal, gagal sinkron Firestore', 'warning');
+    }
   };
 
-  // ─── CRUD ORDER ───
-  const addOrder = (orderData) => {
+  // ─── 7. CRUD PESANAN (Firestore: collection "pesanan") ───
+  // Field: pelanggan_id, nama_pelanggan, alamat_kirim, menu_id, nama_menu,
+  //        harga_satuan, jumlah_porsi, ongkir, total, status, bukti_bayar, tanggal, dibuat_pada
+  const addOrder = async (orderData) => {
     const selectedMenu = menus.find((m) => m.id === orderData.menuId);
     if (!selectedMenu) {
       showToast('Menu tidak ditemukan', 'danger');
@@ -321,8 +437,9 @@ export const AppProvider = ({ children }) => {
     }
 
     const porsi = Number(orderData.jumlahPorsi);
-    if (porsi > selectedMenu.sisaPorsi) {
-      showToast(`Sisa porsi hanya tersedia ${selectedMenu.sisaPorsi}`, 'danger');
+    const sisa = Number(selectedMenu.sisa_porsi ?? selectedMenu.sisaPorsi ?? 0);
+    if (porsi > sisa) {
+      showToast(`Sisa porsi hanya tersedia ${sisa}`, 'danger');
       return null;
     }
 
@@ -330,37 +447,50 @@ export const AppProvider = ({ children }) => {
     const ongkir = Number(orderData.ongkir) || 0;
     const total = hargaSatuan * porsi + ongkir;
     const orderNum = generateOrderNumber(orders);
+    const tempId = generateId('order');
 
     const newOrder = {
-      id: generateId('order'),
+      id: tempId,
       nomorPesanan: orderNum,
+      nomor_pesanan: orderNum,
+      pelanggan_id: orderData.pelangganId,
       pelangganId: orderData.pelangganId,
+      nama_pelanggan: orderData.pelangganNama,
       pelangganNama: orderData.pelangganNama,
+      alamat_kirim: orderData.alamatKirim || 'Jl. Anggrek No. 15, Bandung',
+      alamatKirim: orderData.alamatKirim || 'Jl. Anggrek No. 15, Bandung',
+      menu_id: orderData.menuId,
       menuId: orderData.menuId,
+      nama_menu: selectedMenu.nama,
       menuNama: selectedMenu.nama,
+      harga_satuan: hargaSatuan,
       hargaSatuan,
+      jumlah_porsi: porsi,
       jumlahPorsi: porsi,
       ongkir,
       total,
       status: 'menunggu',
+      bukti_bayar: orderData.buktiBayar || null,
       buktiBayar: orderData.buktiBayar || null,
       tanggal: new Date().toISOString(),
+      dibuat_pada: new Date().toISOString(),
       createdAt: new Date().toISOString(),
     };
 
-    // Update sisa porsi menu
+    // Optimistic update order & menu remaining portion
+    const updatedSisa = Math.max(0, sisa - porsi);
     setMenus((prev) =>
       prev.map((m) =>
         m.id === selectedMenu.id
           ? {
               ...m,
-              sisaPorsi: Math.max(0, m.sisaPorsi - porsi),
-              tersedia: m.sisaPorsi - porsi > 0 ? m.tersedia : false,
+              sisa_porsi: updatedSisa,
+              sisaPorsi: updatedSisa,
+              tersedia: updatedSisa > 0 ? m.tersedia : false,
             }
           : m
       )
     );
-
     setOrders((prev) => [newOrder, ...prev]);
 
     // TRIGGER NOTIFICATION: Pesanan baru
@@ -373,10 +503,22 @@ export const AppProvider = ({ children }) => {
     });
 
     showToast('Pesanan berhasil dibuat', 'success');
+
+    try {
+      await orderService.create(newOrder);
+      await menuService.update(selectedMenu.id, {
+        sisa_porsi: updatedSisa,
+        tersedia: updatedSisa > 0 ? selectedMenu.tersedia : false,
+      });
+    } catch (err) {
+      console.error('Error saving order to Firestore:', err);
+      showToast('Perhatian: Pesanan dibuat lokal, gagal sinkron Firestore', 'warning');
+    }
+
     return newOrder;
   };
 
-  const updateOrderStatus = (orderId, targetStatus) => {
+  const updateOrderStatus = async (orderId, targetStatus) => {
     const order = orders.find((o) => o.id === orderId);
     if (!order) return false;
 
@@ -389,6 +531,7 @@ export const AppProvider = ({ children }) => {
       return false;
     }
 
+    // Optimistic update
     setOrders((prev) =>
       prev.map((o) =>
         o.id === orderId ? { ...o, status: targetStatus } : o
@@ -418,19 +561,33 @@ export const AppProvider = ({ children }) => {
       `Status pesanan #${order.nomorPesanan} diubah ke ${ORDER_STATUS[targetStatus].label}`,
       'success'
     );
+
+    try {
+      await orderService.updateStatus(orderId, targetStatus);
+    } catch (err) {
+      console.error('Error updating order status in Firestore:', err);
+      showToast('Perhatian: Status diubah lokal, gagal sinkron Firestore', 'warning');
+    }
+
     return true;
   };
 
-  const deleteOrder = (orderId) => {
+  const deleteOrder = async (orderId) => {
     setOrders((prev) => prev.filter((o) => o.id !== orderId));
     showToast('Pesanan berhasil dihapus', 'success');
+
+    try {
+      await orderService.delete(orderId);
+    } catch (err) {
+      console.error('Error deleting order in Firestore:', err);
+    }
   };
 
-  const updateOrderBuktiBayar = (orderId, buktiBayar) => {
+  const updateOrderBuktiBayar = async (orderId, buktiBayar) => {
     const order = orders.find((o) => o.id === orderId);
     setOrders((prev) =>
       prev.map((o) =>
-        o.id === orderId ? { ...o, buktiBayar: buktiBayar || null } : o
+        o.id === orderId ? { ...o, buktiBayar: buktiBayar || null, bukti_bayar: buktiBayar || null } : o
       )
     );
 
@@ -448,6 +605,30 @@ export const AppProvider = ({ children }) => {
       buktiBayar ? 'Bukti pembayaran berhasil disimpan' : 'Bukti pembayaran dihapus',
       'success'
     );
+
+    try {
+      await orderService.updateBuktiBayar(orderId, buktiBayar);
+    } catch (err) {
+      console.error('Error updating bukti bayar in Firestore:', err);
+    }
+  };
+
+  // ─── 8. SEED DATA FUNCTION ───
+  // Manual / Development seed only. Does not run automatically.
+  const handleSeedData = async () => {
+    try {
+      showToast('Menjalankan seed dummy data ke Firestore...', 'info');
+      const res = await seedInitialDataToFirestore();
+      showToast(
+        `Seed selesai: ${res.menuCount} menu, ${res.customerCount} pelanggan, ${res.orderCount} pesanan ditambahkan (${res.skipped} sudah ada)`,
+        'success'
+      );
+      return res;
+    } catch (err) {
+      console.error('Failed to seed Firestore:', err);
+      showToast(`Gagal seed ke Firestore: ${err.message}`, 'danger');
+      throw err;
+    }
   };
 
   // ─── BUSINESS INFO & PREFERENCES ───
@@ -469,13 +650,7 @@ export const AppProvider = ({ children }) => {
     setBusinessInfo(defaultBusinessInfo);
     setBusinessPreferences(defaultBusinessPreferences);
     setSimulationState('normal');
-    localStorage.removeItem('dn_menus');
-    localStorage.removeItem('dn_customers');
-    localStorage.removeItem('dn_orders');
-    localStorage.removeItem('dn_notifications');
-    localStorage.removeItem('dn_business_info');
-    localStorage.removeItem('dn_business_prefs');
-    showToast('Semua data berhasil di-reset ke nilai awal', 'info');
+    showToast('Semua data berhasil di-reset ke data bawaan', 'info');
   };
 
   return (
@@ -485,6 +660,8 @@ export const AppProvider = ({ children }) => {
         setActiveTab,
         simulationState,
         setSimulationState,
+        isFirestoreLoading,
+        firestoreError,
         menus,
         customers,
         orders,
@@ -516,6 +693,7 @@ export const AppProvider = ({ children }) => {
         deleteOrder,
         updateOrderBuktiBayar,
         resetData,
+        seedData: handleSeedData,
       }}
     >
       {children}

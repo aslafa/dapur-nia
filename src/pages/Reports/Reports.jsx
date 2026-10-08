@@ -4,7 +4,7 @@ import EmptyState from '../../components/EmptyState/EmptyState';
 import LoadingState from '../../components/LoadingState/LoadingState';
 import ErrorState from '../../components/ErrorState/ErrorState';
 import StatusBadge from '../../components/StatusBadge/StatusBadge';
-import { formatCurrency } from '../../data/dummyData';
+import { formatCurrency, toDateObject } from '../../data/dummyData';
 import {
   IconChartColumn,
   IconClipboardList,
@@ -29,7 +29,8 @@ export default function ReportsPage() {
     if (period !== 'all') {
       const days = Number(period);
       const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-      return new Date(o.tanggal) >= cutoff;
+      const orderDate = toDateObject(o.tanggal);
+      return orderDate ? orderDate >= cutoff : false;
     }
     return true;
   });
@@ -247,11 +248,13 @@ export default function ReportsPage() {
 
               <div>
                 {recentTransactions.map((order, idx) => {
-                  const dateObj = new Date(order.tanggal);
-                  const dateStr = dateObj.toLocaleDateString('id-ID', {
-                    day: '2-digit',
-                    month: 'short',
-                  });
+                  const dateObj = toDateObject(order.tanggal);
+                  const dateStr = dateObj
+                    ? dateObj.toLocaleDateString('id-ID', {
+                        day: '2-digit',
+                        month: 'short',
+                      })
+                    : '-';
 
                   return (
                     <div

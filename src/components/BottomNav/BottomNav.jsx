@@ -1,22 +1,41 @@
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   IconHome,
   IconCookingPot,
   IconClipboardList,
-  IconUsers,
+  IconChartColumn,
   IconUserRound,
 } from '../Icons';
+import { ROLES } from '../../services/authService';
 
-export default function BottomNav() {
-  const { activeTab, setActiveTab } = useApp();
-
-  const navItems = [
+const NAV_CONFIG = {
+  [ROLES.PEMILIK]: [
     { id: 'home', label: 'Beranda', icon: IconHome },
     { id: 'menu', label: 'Menu', icon: IconCookingPot },
     { id: 'orders', label: 'Pesanan', icon: IconClipboardList },
-    { id: 'customers', label: 'Pelanggan', icon: IconUsers },
+    { id: 'reports', label: 'Laporan', icon: IconChartColumn },
     { id: 'profile', label: 'Profil', icon: IconUserRound },
-  ];
+  ],
+  [ROLES.STAF]: [
+    { id: 'home', label: 'Beranda', icon: IconHome },
+    { id: 'orders', label: 'Pesanan', icon: IconClipboardList },
+    { id: 'profile', label: 'Profil', icon: IconUserRound },
+  ],
+  [ROLES.PELANGGAN]: [
+    { id: 'home', label: 'Beranda', icon: IconHome },
+    { id: 'menu', label: 'Menu', icon: IconCookingPot },
+    { id: 'orders', label: 'Pesanan', icon: IconClipboardList },
+    { id: 'profile', label: 'Profil', icon: IconUserRound },
+  ],
+};
+
+export default function BottomNav() {
+  const { activeTab, setActiveTab } = useApp();
+  const { role } = useAuth();
+
+  const cleanRole = (role || '').toLowerCase();
+  const navItems = NAV_CONFIG[cleanRole] || NAV_CONFIG[ROLES.PELANGGAN];
 
   return (
     <nav className="bottom-nav" aria-label="Navigasi Utama">

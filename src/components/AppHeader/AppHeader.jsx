@@ -1,4 +1,5 @@
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { IconBell, IconArrowLeft, IconUserRound } from '../Icons';
 
 function getGreeting() {
@@ -18,6 +19,7 @@ export default function AppHeader({
   onBack,
 }) {
   const { setActiveTab, businessInfo, unreadNotificationsCount, setIsNotificationOpen } = useApp();
+  const { currentUser } = useAuth();
 
   const handleNotificationClick = () => {
     setIsNotificationOpen(true);
@@ -50,7 +52,7 @@ export default function AppHeader({
             </div>
             <div>
               <div className="header-greeting-sub">{getGreeting()},</div>
-              <div className="header-greeting-name">{businessInfo?.namaUsaha || 'Dapur Nia'}</div>
+              <div className="header-greeting-name">{currentUser?.name || businessInfo?.namaUsaha || 'Dapur Nia'}</div>
             </div>
           </div>
         ) : (

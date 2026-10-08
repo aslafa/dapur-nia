@@ -1,4 +1,7 @@
+import { useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import AuthGuard from './components/AuthGuard/AuthGuard';
 import AppHeader from './components/AppHeader/AppHeader';
 import BottomNav from './components/BottomNav/BottomNav';
 import Toast from './components/Toast/Toast';
@@ -9,7 +12,10 @@ import {
   IconUsers,
   IconChartColumn,
   IconUserRound,
+  IconShieldCheck,
 } from './components/Icons';
+import './pages/Auth/Auth.css';
+import { ROLES } from './services/authService';
 
 // Pages
 import HomePage from './pages/Home/Home';
@@ -19,8 +25,42 @@ import OrdersPage from './pages/Orders/Orders';
 import ReportsPage from './pages/Reports/Reports';
 import ProfilePage from './pages/Profile/Profile';
 
+// ─── ACCESS DENIED PAGE ───
+function AccessDeniedPage({ onGoHome }) {
+  return (
+    <div className="access-denied-wrap">
+      <div className="access-denied-icon">
+        <IconShieldCheck size={34} color="#EF4444" />
+      </div>
+      <h2 className="access-denied-title">Akses Terbatas</h2>
+      <p className="access-denied-desc">
+        Anda tidak memiliki izin untuk membuka halaman ini. Hubungi admin jika Anda merasa ini keliru.
+      </p>
+      <button
+        type="button"
+        className="auth-btn-primary"
+        style={{ maxWidth: 220 }}
+        onClick={onGoHome}
+      >
+        Kembali ke Beranda
+      </button>
+    </div>
+  );
+}
+
 function AppContent() {
   const { activeTab, setActiveTab } = useApp();
+  const { currentUser, role, canAccess } = useAuth();
+
+  const isCustomer = role === ROLES.PELANGGAN;
+  const isStaff = role === ROLES.STAF;
+
+  // Always reset to 'home' when user session changes to ensure role-appropriate landing page
+  useEffect(() => {
+    if (currentUser?.id) {
+      setActiveTab('home');
+    }
+  }, [currentUser?.id, setActiveTab]);
 
   const getHeaderProps = () => {
     switch (activeTab) {
@@ -29,14 +69,18 @@ function AppContent() {
       case 'menu':
         return {
           icon: <IconCookingPot size={20} color="var(--primary-dark)" />,
-          title: 'Menu Katering',
-          subtitle: 'Kapasitas & ketersediaan porsi',
+          title: isCustomer ? 'Katalog Menu' : 'Menu Katering',
+          subtitle: isCustomer
+            ? 'Pilihan masakan katering rumahan'
+            : 'Kapasitas & ketersediaan porsi',
         };
       case 'orders':
         return {
           icon: <IconClipboardList size={20} color="var(--primary-dark)" />,
-          title: 'Pesanan',
-          subtitle: 'Alur proses pesanan katering',
+          title: isCustomer ? 'Pesanan Saya' : isStaff ? 'Kelola Pesanan' : 'Pesanan',
+          subtitle: isCustomer
+            ? 'Daftar dan status pesanan katering Anda'
+            : 'Alur proses pesanan katering',
         };
       case 'customers':
         return {
@@ -55,8 +99,12 @@ function AppContent() {
       case 'profile':
         return {
           icon: <IconUserRound size={20} color="var(--primary-dark)" />,
-          title: 'Profil Usaha',
-          subtitle: 'Informasi & pengaturan Dapur Nia',
+          title: isCustomer ? 'Profil Saya' : isStaff ? 'Profil Staf' : 'Profil Usaha',
+          subtitle: isCustomer
+            ? 'Informasi akun & preferensi'
+            : isStaff
+            ? 'Informasi akun staf operasional'
+            : 'Informasi & pengaturan Dapur Nia',
           showBack: true,
           onBack: () => setActiveTab('home'),
         };
@@ -66,6 +114,11 @@ function AppContent() {
   };
 
   const renderCurrentPage = () => {
+    // Role-based route protection
+    if (!canAccess(activeTab)) {
+      return <AccessDeniedPage onGoHome={() => setActiveTab('home')} />;
+    }
+
     switch (activeTab) {
       case 'home':
         return <HomePage />;
@@ -87,21 +140,10 @@ function AppContent() {
   return (
     <div className="mobile-app-wrapper">
       <div className="app-shell">
-        {/* Mobile Header */}
         <AppHeader {...getHeaderProps()} />
-
-        {/* Scrollable Main Content */}
-        <main className="app-main-content">
-          {renderCurrentPage()}
-        </main>
-
-        {/* Fixed Mobile Bottom Navigation (5 items) */}
+        <main className="app-main-content">{renderCurrentPage()}</main>
         <BottomNav />
-
-        {/* Floating Toast Feedback */}
         <Toast />
-
-        {/* Mobile Bottom Sheet Notification Panel */}
         <NotificationSheet />
       </div>
     </div>
@@ -110,8 +152,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <AppContent />
-    </AppProvider>
+    <AuthProvider>
+      <AuthGuard>
+        <AppProvider>
+          <AppContent />
+        </AppProvider>
+      </AuthGuard>
+    </AuthProvider>
   );
 }

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { ROLE_LABELS, ROLES } from '../../services/authService';
 import Modal from '../../components/Modal/Modal';
 import ConfirmDialog from '../../components/Modal/ConfirmDialog';
 import {
@@ -10,6 +12,12 @@ import {
   IconChevronRight,
   IconRotateCcw,
   IconStore,
+  IconLogOut,
+  IconShieldCheck,
+  IconPhone,
+  IconMail,
+  IconMapPin,
+  IconBell,
 } from '../../components/Icons';
 import { formatCurrency } from '../../data/dummyData';
 
@@ -20,9 +28,20 @@ export default function ProfilePage() {
     updateBusinessInfo,
     updateBusinessPreferences,
     resetData,
+    seedData,
     simulationState,
     setSimulationState,
   } = useApp();
+
+  const { currentUser, role, logout } = useAuth();
+  // STRICT role checks — never default to isOwner for unknown/empty role.
+  // Security: if role is missing or unrecognized, treat as pelanggan.
+  const cleanRole = (role || ROLES.PELANGGAN).toLowerCase();
+  const isOwner = cleanRole === ROLES.PEMILIK;
+  const isStaff = cleanRole === ROLES.STAF;
+  const isCustomer = !isOwner && !isStaff; // pelanggan or any unknown role
+
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Modals state
   const [isEditInfoOpen, setIsEditInfoOpen] = useState(false);
@@ -47,6 +66,9 @@ export default function ProfilePage() {
 
   const [errorsInfo, setErrorsInfo] = useState({});
   const [errorsPrefs, setErrorsPrefs] = useState({});
+
+  // Customer preference toggle local state
+  const [customerNotif, setCustomerNotif] = useState(true);
 
   // Handlers for Info
   const handleOpenEditInfo = () => {
@@ -107,6 +129,412 @@ export default function ProfilePage() {
     setIsEditPrefsOpen(false);
   };
 
+  // ─── PELANGGAN PROFIL ───
+  if (isCustomer) {
+    return (
+      <div className="page-container">
+        {/* Profile Header Card */}
+        <div className="profile-hero-card">
+          <div className="profile-avatar-bubble">
+            <IconUserRound size={26} color="#FFFFFF" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h2 className="profile-hero-name">{currentUser?.name || 'Pelanggan'}</h2>
+              <span className="profile-badge-owner">Pelanggan</span>
+            </div>
+            <div className="profile-hero-field">
+              {currentUser?.email || currentUser?.phone || 'Akun Pelanggan'}
+            </div>
+          </div>
+        </div>
+
+        {/* Informasi Akun Pelanggan */}
+        <div className="app-card profile-section-card">
+          <div className="profile-section-header">
+            <div className="profile-section-title-wrap">
+              <IconUserRound size={18} color="var(--primary-dark)" />
+              <h3 className="profile-section-title">Profil Saya</h3>
+            </div>
+          </div>
+
+          <div className="profile-info-grid">
+            <div className="profile-info-row">
+              <span className="profile-info-label">Nama Lengkap</span>
+              <span className="profile-info-val" style={{ fontWeight: '600' }}>
+                {currentUser?.name || '-'}
+              </span>
+            </div>
+            <div className="profile-info-row">
+              <span className="profile-info-label">Email</span>
+              <span className="profile-info-val">{currentUser?.email || '-'}</span>
+            </div>
+            <div className="profile-info-row">
+              <span className="profile-info-label">Nomor WhatsApp</span>
+              <span className="profile-info-val">
+                {currentUser?.whatsapp || currentUser?.phone || '-'}
+              </span>
+            </div>
+            <div className="profile-info-row">
+              <span className="profile-info-label">Alamat Kirim</span>
+              <span className="profile-info-val">
+                {businessInfo.alamatDapur || 'Bandung, Jawa Barat'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Preferensi Pelanggan */}
+        <div className="app-card profile-section-card">
+          <div className="profile-section-header">
+            <div className="profile-section-title-wrap">
+              <IconBell size={18} color="var(--primary-dark)" />
+              <h3 className="profile-section-title">Preferensi</h3>
+            </div>
+          </div>
+
+          <div
+            className="toggle-field-row"
+            onClick={() => setCustomerNotif(!customerNotif)}
+            style={{ padding: '8px 0' }}
+          >
+            <div>
+              <div style={{ fontSize: '13.5px', fontWeight: '600' }}>
+                Notifikasi Pesanan
+              </div>
+              <div style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                Terima pemberitahuan saat status pesanan diperbarui
+              </div>
+            </div>
+            <div className={`switch-control ${customerNotif ? 'is-on' : ''}`}>
+              <div className="switch-thumb"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bantuan & Panduan */}
+        <div
+          className="app-card profile-menu-clickable"
+          onClick={() => setIsHelpOpen(true)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <IconCircleHelp size={20} color="var(--primary-dark)" />
+            <div>
+              <div style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text)' }}>
+                Bantuan & Panduan
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                Cara pemesanan dan pengantaran katering Dapur Nia
+              </div>
+            </div>
+          </div>
+          <IconChevronRight size={16} color="var(--muted)" />
+        </div>
+
+        {/* Logout */}
+        <div className="app-card profile-section-card" style={{ marginTop: '16px' }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-block"
+            style={{
+              borderColor: 'var(--danger-light)',
+              color: 'var(--danger)',
+              fontWeight: '700',
+              gap: '8px',
+            }}
+            onClick={() => setShowLogoutConfirm(true)}
+          >
+            <IconLogOut size={16} color="var(--danger)" />
+            <span>Keluar dari Akun</span>
+          </button>
+        </div>
+
+        {/* Modal Bantuan Pelanggan */}
+        <Modal
+          isOpen={isHelpOpen}
+          onClose={() => setIsHelpOpen(false)}
+          title="Bantuan & Panduan Pelanggan"
+        >
+          <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text)' }}>
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontWeight: '700', color: 'var(--primary-dark)', marginBottom: '3px' }}>
+                1. Cara Pemesanan
+              </div>
+              <p style={{ color: 'var(--muted)', fontSize: '12px' }}>
+                Pilih menu pada Katalog Menu atau Beranda, lalu tekan tombol "Pesan". Masukkan jumlah porsi yang diinginkan dan konfirmasi pesanan Anda.
+              </p>
+            </div>
+
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontWeight: '700', color: 'var(--primary-dark)', marginBottom: '3px' }}>
+                2. Upload Bukti Pembayaran
+              </div>
+              <p style={{ color: 'var(--muted)', fontSize: '12px' }}>
+                Buka menu "Pesanan Saya", pilih pesanan yang berstatus Menunggu Bayar, lalu unggah foto bukti transfer pembayaran Anda.
+              </p>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontWeight: '700', color: 'var(--primary-dark)', marginBottom: '3px' }}>
+                3. Pelacakan Pesanan
+              </div>
+              <p style={{ color: 'var(--muted)', fontSize: '12px' }}>
+                Status pesanan Anda akan diperbarui oleh tim Dapur Nia dari Menunggu Bayar → Dibayar → Diproses → Selesai.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-primary btn-block"
+              onClick={() => setIsHelpOpen(false)}
+            >
+              Tutup Panduan
+            </button>
+          </div>
+        </Modal>
+
+        {/* Confirm Logout Dialog */}
+        <ConfirmDialog
+          isOpen={showLogoutConfirm}
+          onClose={() => setShowLogoutConfirm(false)}
+          onConfirm={() => {
+            setShowLogoutConfirm(false);
+            logout();
+          }}
+          title="Yakin ingin keluar?"
+          message="Anda akan keluar dari akun Dapur Nia."
+          confirmText="Keluar"
+          cancelText="Batal"
+          danger={true}
+        />
+      </div>
+    );
+  }
+
+  // ─── STAF PROFIL ───
+  if (isStaff) {
+    return (
+      <div className="page-container">
+        {/* Profile Hero Card */}
+        <div className="profile-hero-card">
+          <div className="profile-avatar-bubble">
+            <IconUserRound size={26} color="#FFFFFF" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h2 className="profile-hero-name">{currentUser?.name || 'Staf'}</h2>
+              <span className="profile-badge-owner" style={{ background: '#DBEAFE', color: '#1D4ED8' }}>
+                Staf Dapur
+              </span>
+            </div>
+            <div className="profile-hero-field">{currentUser?.email || 'Staf Dapur Nia'}</div>
+          </div>
+        </div>
+
+        {/* Informasi Akun Staf */}
+        <div className="app-card profile-section-card">
+          <div className="profile-section-header">
+            <div className="profile-section-title-wrap">
+              <IconShieldCheck size={18} color="var(--primary-dark)" />
+              <h3 className="profile-section-title">Akun & Peran</h3>
+            </div>
+            <span className="status-badge status-badge-success" style={{ fontSize: '11px' }}>
+              ● Terhubung
+            </span>
+          </div>
+
+          <div className="profile-info-grid">
+            <div className="profile-info-row">
+              <span className="profile-info-label">Nama</span>
+              <span className="profile-info-val" style={{ fontWeight: '600' }}>
+                {currentUser?.name || '-'}
+              </span>
+            </div>
+            <div className="profile-info-row">
+              <span className="profile-info-label">Email</span>
+              <span className="profile-info-val">{currentUser?.email || '-'}</span>
+            </div>
+            <div className="profile-info-row">
+              <span className="profile-info-label">Role</span>
+              <span className="profile-info-val" style={{ fontWeight: '700', color: '#2563EB' }}>
+                Staf Operasional
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bantuan & Panduan Staf */}
+        <div
+          className="app-card profile-menu-clickable"
+          onClick={() => setIsHelpOpen(true)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <IconCircleHelp size={20} color="var(--primary-dark)" />
+            <div>
+              <div style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text)' }}>
+                Bantuan & Panduan Staf
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                Petunjuk operasional pemrosesan pesanan & konfirmasi pembayaran
+              </div>
+            </div>
+          </div>
+          <IconChevronRight size={16} color="var(--muted)" />
+        </div>
+
+        {/* Pengaturan / Pengujian Tampilan */}
+        <div
+          className="app-card profile-menu-clickable"
+          onClick={() => setIsStateTestingOpen(true)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <IconSettings size={20} color="var(--primary-dark)" />
+            <div>
+              <div style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text)' }}>
+                Pengaturan / Pengujian Tampilan
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                Status aktif saat ini: <strong>{simulationState.toUpperCase()}</strong>
+              </div>
+            </div>
+          </div>
+          <IconChevronRight size={16} color="var(--muted)" />
+        </div>
+
+        {/* Logout */}
+        <div className="app-card profile-section-card" style={{ marginTop: '16px' }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-block"
+            style={{
+              borderColor: 'var(--danger-light)',
+              color: 'var(--danger)',
+              fontWeight: '700',
+              gap: '8px',
+            }}
+            onClick={() => setShowLogoutConfirm(true)}
+          >
+            <IconLogOut size={16} color="var(--danger)" />
+            <span>Keluar dari Akun</span>
+          </button>
+        </div>
+
+        {/* Modal Bantuan Staf */}
+        <Modal
+          isOpen={isHelpOpen}
+          onClose={() => setIsHelpOpen(false)}
+          title="Panduan Operasional Staf"
+        >
+          <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text)' }}>
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontWeight: '700', color: 'var(--primary-dark)', marginBottom: '3px' }}>
+                1. Verifikasi Pembayaran
+              </div>
+              <p style={{ color: 'var(--muted)', fontSize: '12px' }}>
+                Buka tab Pesanan, periksa foto bukti pembayaran pada pesanan berstatus Menunggu Bayar, lalu tekan tombol "Konfirmasi Pembayaran".
+              </p>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontWeight: '700', color: 'var(--primary-dark)', marginBottom: '3px' }}>
+                2. Pemrosesan Pesanan
+              </div>
+              <p style={{ color: 'var(--muted)', fontSize: '12px' }}>
+                Ubah status pesanan secara bertahap dari Dibayar → Diproses → Selesai saat katering siap diantar.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-primary btn-block"
+              onClick={() => setIsHelpOpen(false)}
+            >
+              Tutup Panduan
+            </button>
+          </div>
+        </Modal>
+
+        {/* Modal State Testing */}
+        <Modal
+          isOpen={isStateTestingOpen}
+          onClose={() => setIsStateTestingOpen(false)}
+          title="Pengaturan / Pengujian Tampilan"
+        >
+          <div>
+            <div style={{ fontSize: '12.5px', color: 'var(--muted)', marginBottom: '14px', lineHeight: '1.5' }}>
+              Pilih kondisi state untuk mensimulasikan tampilan halaman:
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '18px' }}>
+              <button
+                type="button"
+                className={`btn ${simulationState === 'normal' ? 'btn-primary' : 'btn-secondary'} btn-block`}
+                onClick={() => {
+                  setSimulationState('normal');
+                  setIsStateTestingOpen(false);
+                }}
+              >
+                ● Mode Normal (Default Aplikasi)
+              </button>
+              <button
+                type="button"
+                className={`btn ${simulationState === 'loading' ? 'btn-primary' : 'btn-secondary'} btn-block`}
+                onClick={() => {
+                  setSimulationState('loading');
+                  setIsStateTestingOpen(false);
+                }}
+              >
+                ⏳ Simulasi Loading State
+              </button>
+              <button
+                type="button"
+                className={`btn ${simulationState === 'empty' ? 'btn-primary' : 'btn-secondary'} btn-block`}
+                onClick={() => {
+                  setSimulationState('empty');
+                  setIsStateTestingOpen(false);
+                }}
+              >
+                📭 Simulasi Empty State
+              </button>
+              <button
+                type="button"
+                className={`btn ${simulationState === 'error' ? 'btn-primary' : 'btn-secondary'} btn-block`}
+                onClick={() => {
+                  setSimulationState('error');
+                  setIsStateTestingOpen(false);
+                }}
+              >
+                ⚠️ Simulasi Error State
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-block"
+              onClick={() => setIsStateTestingOpen(false)}
+            >
+              Tutup
+            </button>
+          </div>
+        </Modal>
+
+        {/* Confirm Logout Dialog */}
+        <ConfirmDialog
+          isOpen={showLogoutConfirm}
+          onClose={() => setShowLogoutConfirm(false)}
+          onConfirm={() => {
+            setShowLogoutConfirm(false);
+            logout();
+          }}
+          title="Yakin ingin keluar?"
+          message="Anda akan keluar dari sesi aplikasi Dapur Nia."
+          confirmText="Keluar"
+          cancelText="Batal"
+          danger={true}
+        />
+      </div>
+    );
+  }
+
+  // ─── PEMILIK / OWNER PROFIL (FULL EXISTING) ───
   return (
     <div className="page-container">
       {/* 1. Profil Dapur Nia Card */}
@@ -116,11 +544,13 @@ export default function ProfilePage() {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <h2 className="profile-hero-name">Dina</h2>
+            <h2 className="profile-hero-name">{currentUser?.name || 'Pengguna'}</h2>
             <span className="profile-badge-owner">Pemilik</span>
           </div>
           <div className="profile-hero-business">{businessInfo.namaUsaha}</div>
-          <div className="profile-hero-field">{businessInfo.bidang}</div>
+          <div className="profile-hero-field">
+            {currentUser?.email || currentUser?.phone || businessInfo.bidang}
+          </div>
         </div>
       </div>
 
@@ -183,7 +613,10 @@ export default function ProfilePage() {
         <div className="profile-info-grid">
           <div className="profile-info-row">
             <span className="profile-info-label">Ongkos Kirim Default</span>
-            <span className="profile-info-val" style={{ color: 'var(--primary-dark)', fontWeight: '700' }}>
+            <span
+              className="profile-info-val"
+              style={{ color: 'var(--primary-dark)', fontWeight: '700' }}
+            >
               {formatCurrency(businessPreferences.ongkirDefault)}
             </span>
           </div>
@@ -227,7 +660,7 @@ export default function ProfilePage() {
         <IconChevronRight size={16} color="var(--muted)" />
       </div>
 
-      {/* 5. Pengaturan / Pengujian Tampilan (Modal/Sheet trigger as requested in Requirement 4) */}
+      {/* 5. Pengaturan / Pengujian Tampilan */}
       <div
         className="app-card profile-menu-clickable"
         onClick={() => setIsStateTestingOpen(true)}
@@ -246,7 +679,57 @@ export default function ProfilePage() {
         <IconChevronRight size={16} color="var(--muted)" />
       </div>
 
-      {/* 6. Reset Data (Opsi Sekunder di Bagian Paling Bawah) */}
+      {/* 6. Akun & Keamanan (Logout) */}
+      <div className="app-card profile-section-card" style={{ marginTop: '12px' }}>
+        <div className="profile-section-header">
+          <div className="profile-section-title-wrap">
+            <IconShieldCheck size={18} color="var(--primary-dark)" />
+            <h3 className="profile-section-title">Akun &amp; Sesi Aktif</h3>
+          </div>
+          <span className="status-badge status-badge-success" style={{ fontSize: '11px' }}>
+            ● Terhubung
+          </span>
+        </div>
+
+        <div className="profile-info-grid" style={{ marginBottom: '14px' }}>
+          <div className="profile-info-row">
+            <span className="profile-info-label">Nama</span>
+            <span className="profile-info-val" style={{ fontWeight: '600' }}>
+              {currentUser?.name || 'Pemilik'}
+            </span>
+          </div>
+          <div className="profile-info-row">
+            <span className="profile-info-label">Email</span>
+            <span className="profile-info-val">{currentUser?.email || '-'}</span>
+          </div>
+          <div className="profile-info-row">
+            <span className="profile-info-label">Role</span>
+            <span
+              className="profile-info-val"
+              style={{ fontWeight: '600', color: 'var(--primary-dark)' }}
+            >
+              Pemilik
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="btn btn-secondary btn-block"
+          style={{
+            borderColor: 'var(--danger-light)',
+            color: 'var(--danger)',
+            fontWeight: '700',
+            gap: '8px',
+          }}
+          onClick={() => setShowLogoutConfirm(true)}
+        >
+          <IconLogOut size={16} color="var(--danger)" />
+          <span>Keluar dari Akun</span>
+        </button>
+      </div>
+
+      {/* Reset Data */}
       <div style={{ marginTop: '16px', textAlign: 'center', paddingBottom: '16px' }}>
         <button
           type="button"
@@ -261,7 +744,7 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* ─── MODAL EDIT: INFORMASI USAHA ─── */}
+      {/* Modal Edit Info */}
       <Modal
         isOpen={isEditInfoOpen}
         onClose={() => setIsEditInfoOpen(false)}
@@ -347,7 +830,7 @@ export default function ProfilePage() {
         </form>
       </Modal>
 
-      {/* ─── MODAL EDIT: PREFERENSI USAHA ─── */}
+      {/* Modal Edit Prefs */}
       <Modal
         isOpen={isEditPrefsOpen}
         onClose={() => setIsEditPrefsOpen(false)}
@@ -390,17 +873,28 @@ export default function ProfilePage() {
             <label className="form-label-top">Notifikasi Pesanan Baru</label>
             <div
               className="toggle-field-row"
-              onClick={() => setPrefsForm({ ...prefsForm, notifikasiPesanan: !prefsForm.notifikasiPesanan })}
+              onClick={() =>
+                setPrefsForm({
+                  ...prefsForm,
+                  notifikasiPesanan: !prefsForm.notifikasiPesanan,
+                })
+              }
             >
               <div>
                 <div style={{ fontSize: '13px', fontWeight: '600' }}>
-                  {prefsForm.notifikasiPesanan ? 'Notifikasi Aktif' : 'Notifikasi Dinonaktifkan'}
+                  {prefsForm.notifikasiPesanan
+                    ? 'Notifikasi Aktif'
+                    : 'Notifikasi Dinonaktifkan'}
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
                   Pemberitahuan saat pesanan katering masuk
                 </div>
               </div>
-              <div className={`switch-control ${prefsForm.notifikasiPesanan ? 'is-on' : ''}`}>
+              <div
+                className={`switch-control ${
+                  prefsForm.notifikasiPesanan ? 'is-on' : ''
+                }`}
+              >
                 <div className="switch-thumb"></div>
               </div>
             </div>
@@ -421,7 +915,7 @@ export default function ProfilePage() {
         </form>
       </Modal>
 
-      {/* ─── MODAL: BANTUAN & PANDUAN ─── */}
+      {/* Modal Bantuan Pemilik */}
       <Modal
         isOpen={isHelpOpen}
         onClose={() => setIsHelpOpen(false)}
@@ -442,16 +936,7 @@ export default function ProfilePage() {
               2. Alur Status Pesanan
             </div>
             <p style={{ color: 'var(--muted)', fontSize: '12px' }}>
-              Status pesanan berpindah secara berurutan: Menunggu Bayar → Dibayar → Diproses → Selesai. Pesanan juga dapat dibatalkan dari status Menunggu Bayar. Status tidak dapat melompat atau mundur.
-            </p>
-          </div>
-
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ fontWeight: '700', color: 'var(--primary-dark)', marginBottom: '3px' }}>
-              3. Kontak Pelanggan WhatsApp
-            </div>
-            <p style={{ color: 'var(--muted)', fontSize: '12px' }}>
-              Simpan kontak pelanggan untuk memudahkan konfirmasi pesanan dan pengantaran katering langsung melalui WhatsApp.
+              Status pesanan berpindah secara berurutan: Menunggu Bayar → Dibayar → Diproses → Selesai.
             </p>
           </div>
 
@@ -465,7 +950,7 @@ export default function ProfilePage() {
         </div>
       </Modal>
 
-      {/* ─── MODAL: PENGATURAN / PENGUJIAN TAMPILAN (Requirement 4) ─── */}
+      {/* Modal State Testing */}
       <Modal
         isOpen={isStateTestingOpen}
         onClose={() => setIsStateTestingOpen(false)}
@@ -473,9 +958,8 @@ export default function ProfilePage() {
       >
         <div>
           <div style={{ fontSize: '12.5px', color: 'var(--muted)', marginBottom: '14px', lineHeight: '1.5' }}>
-            Pilih kondisi state untuk mensimulasikan tampilan halaman (Menu, Pelanggan, Pesanan, Laporan):
+            Pilih kondisi state untuk mensimulasikan tampilan halaman:
           </div>
-
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '18px' }}>
             <button
               type="button"
@@ -517,8 +1001,24 @@ export default function ProfilePage() {
             >
               ⚠️ Simulasi Error State
             </button>
+            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-block"
+                style={{ fontSize: '12px', color: 'var(--primary-dark)', borderColor: 'var(--primary-light)' }}
+                onClick={async () => {
+                  try {
+                    await seedData();
+                    setIsStateTestingOpen(false);
+                  } catch (e) {
+                    // toast handled
+                  }
+                }}
+              >
+                🌱 Masukkan Data Dummy ke Firestore (Seed Manual)
+              </button>
+            </div>
           </div>
-
           <button
             type="button"
             className="btn btn-secondary btn-block"
@@ -529,7 +1029,7 @@ export default function ProfilePage() {
         </div>
       </Modal>
 
-      {/* ─── CONFIRM RESET DIALOG ─── */}
+      {/* Confirm Reset Dialog */}
       <ConfirmDialog
         isOpen={showResetConfirm}
         onClose={() => setShowResetConfirm(false)}
@@ -541,6 +1041,21 @@ export default function ProfilePage() {
         message="Semua perubahan data lokal akan dikembalikan ke data default bawaan Dapur Nia."
         confirmText="Ya, Reset Data"
         cancelText="Batal"
+      />
+
+      {/* Confirm Logout Dialog */}
+      <ConfirmDialog
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          logout();
+        }}
+        title="Yakin ingin keluar?"
+        message="Anda akan keluar dari sesi aplikasi Dapur Nia."
+        confirmText="Keluar"
+        cancelText="Batal"
+        danger={true}
       />
     </div>
   );

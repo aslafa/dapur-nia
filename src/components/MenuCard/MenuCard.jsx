@@ -1,10 +1,11 @@
 import StatusBadge from '../StatusBadge/StatusBadge';
-import { IconCookingPot, IconCup, IconPencil, IconTrash } from '../Icons';
+import { IconCookingPot, IconCup, IconPencil, IconTrash, IconPlus } from '../Icons';
 import { formatCurrency, isDrinkMenu } from '../../data/dummyData';
 
-export default function MenuCard({ menu, onEdit, onDelete }) {
+export default function MenuCard({ menu, onEdit, onDelete, onOrder, role = 'pemilik' }) {
   const isAvailable = menu.sisaPorsi > 0 && menu.tersedia;
   const isDrink = isDrinkMenu(menu);
+  const isCustomer = role === 'pelanggan';
 
   return (
     <article className="app-card" aria-label={`Menu ${menu.nama}`}>
@@ -58,24 +59,45 @@ export default function MenuCard({ menu, onEdit, onDelete }) {
         </div>
 
         <div className="card-actions-col">
-          <button
-            type="button"
-            className="btn-icon-square"
-            onClick={() => onEdit(menu)}
-            title="Edit Menu"
-            aria-label={`Edit ${menu.nama}`}
-          >
-            <IconPencil size={15} color="var(--muted)" />
-          </button>
-          <button
-            type="button"
-            className="btn-icon-square danger"
-            onClick={() => onDelete(menu)}
-            title="Hapus Menu"
-            aria-label={`Hapus ${menu.nama}`}
-          >
-            <IconTrash size={15} color="var(--danger)" />
-          </button>
+          {isCustomer ? (
+            <button
+              type="button"
+              className={`btn btn-sm ${isAvailable ? 'btn-primary' : 'btn-secondary'}`}
+              style={{
+                padding: '6px 12px',
+                fontSize: '12.5px',
+                fontWeight: '700',
+                gap: '4px',
+                whiteSpace: 'nowrap',
+              }}
+              disabled={!isAvailable}
+              onClick={() => onOrder && onOrder(menu)}
+            >
+              <IconPlus size={14} />
+              <span>{isAvailable ? 'Pesan' : 'Habis'}</span>
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn-icon-square"
+                onClick={() => onEdit && onEdit(menu)}
+                title="Edit Menu"
+                aria-label={`Edit ${menu.nama}`}
+              >
+                <IconPencil size={15} color="var(--muted)" />
+              </button>
+              <button
+                type="button"
+                className="btn-icon-square danger"
+                onClick={() => onDelete && onDelete(menu)}
+                title="Hapus Menu"
+                aria-label={`Hapus ${menu.nama}`}
+              >
+                <IconTrash size={15} color="var(--danger)" />
+              </button>
+            </>
+          )}
         </div>
       </div>
     </article>
